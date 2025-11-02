@@ -1,0 +1,9 @@
+CREATE DATABASE IF NOT EXISTS iot_db;
+USE iot_db;
+CREATE TABLE IF NOT EXISTS iot_data (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  temperature FLOAT,
+  humidity FLOAT,
+  device_id VARCHAR(50),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
