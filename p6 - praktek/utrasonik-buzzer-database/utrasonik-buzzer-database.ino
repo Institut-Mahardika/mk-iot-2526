@@ -7,11 +7,11 @@
 #define BUZZER_PIN   14
 
 // WiFi
-const char* ssid     = "Salwa FH";
-const char* password = "hurufbesarsemua";
+const char* ssid     = "PUSDATIN";
+const char* password = "@Mahardika+";
 
 // API Flask
-const char* serverUrl = "http://192.168.69.119:5000/ultrasonic/insert";
+const char* serverUrl = "http://192.168.100.174:5000/ultrasonic/insert";
 
 // Fisika & aturan kirim
 const float SPEED_OF_SOUND_CM_PER_US = 0.0343f / 2.0f;  // cm/us (pulang-pergi)

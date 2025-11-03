@@ -1,9 +1,11 @@
 CREATE DATABASE IF NOT EXISTS iot_db;
 USE iot_db;
-CREATE TABLE IF NOT EXISTS iot_data (
+
+CREATE TABLE IF NOT EXISTS iot_ultrasonic (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  temperature FLOAT,
-  humidity FLOAT,
-  device_id VARCHAR(50),
+  device_id VARCHAR(64) NOT NULL,
+  distance_cm DECIMAL(8,2) NOT NULL,
+  threshold_cm DECIMAL(8,2) NOT NULL,
+  triggered TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
