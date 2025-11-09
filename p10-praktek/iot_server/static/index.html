@@ -1,159 +1,692 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
   <head>
     <meta charset="utf-8" />
-    <title>IoT Radar LDR</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IoT Scan Monitor</title>
     <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
       body {
-        font-family: system-ui, Arial;
-        margin: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+        background: linear-gradient(135deg, #0f172a 0%, #1a1f3a 50%, #132a4b 100%);
+        color: #e2e8f0;
+        min-height: 100vh;
+        padding: 24px 16px;
       }
-      .row {
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      /* Header */
+      .header {
+        margin-bottom: 32px;
         display: flex;
-        gap: 24px;
+        justify-content: space-between;
+        align-items: flex-start;
         flex-wrap: wrap;
+        gap: 16px;
       }
-      canvas {
-        background: #0b1020;
+
+      .header-left h1 {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .header-left p {
+        font-size: 14px;
+        color: #94a3b8;
+      }
+
+      .status-section {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .status-label {
+        font-size: 13px;
+        color: #cbd5e1;
+        font-weight: 500;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .badge.ok {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+
+      .badge.warn {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+
+      .ok .status-dot {
+        background-color: #10b981;
+      }
+
+      .warn .status-dot {
+        background-color: #ef4444;
+      }
+
+      @keyframes pulse {
+        0%, 100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      /* Grid Layout */
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      @media (min-width: 768px) {
+        .grid {
+          grid-template-columns: 2fr 1fr;
+        }
+      }
+
+      @media (min-width: 1024px) {
+        .grid {
+          grid-template-columns: 2fr 1fr 1fr;
+        }
+      }
+
+      /* Cards */
+      .card {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.1);
         border-radius: 12px;
+        padding: 24px;
+        backdrop-filter: blur(10px);
+        transition: all 0.3s ease;
       }
+
+      .card:hover {
+        border-color: rgba(59, 130, 246, 0.3);
+        background: rgba(15, 23, 42, 0.8);
+      }
+
+      .card h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #f1f5f9;
+      }
+
+      .card h3 {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 16px 0 10px 0;
+        color: #cbd5e1;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      /* Radar Canvas */
+      #radar {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(30, 41, 59, 0.3) 100%);
+        border-radius: 8px;
+        margin-bottom: 16px;
+      }
+
+      /* Controls */
+      .control-group {
+        margin-bottom: 16px;
+      }
+
       label {
         display: block;
-        margin-top: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #cbd5e1;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
       }
-      .card {
-        border: 1px solid #ddd;
-        border-radius: 12px;
-        padding: 16px;
-        min-width: 300px;
+
+      input[type='number'],
+      input[type='text'],
+      select {
+        width: 100%;
+        padding: 10px 12px;
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 8px;
+        color: #e2e8f0;
+        font-size: 14px;
+        transition: all 0.2s ease;
       }
-      .pill {
-        display: inline-block;
-        padding: 2px 10px;
-        border-radius: 999px;
+
+      input[type='number']:focus,
+      input[type='text']:focus,
+      select:focus {
+        outline: none;
+        border-color: #3b82f6;
+        background: rgba(30, 41, 59, 0.8);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
       }
-      .ok {
-        background: #e6ffed;
-        color: #036a2c;
+
+      /* Buttons */
+      button {
+        padding: 10px 16px;
+        border: 0;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
       }
+
+      button.primary {
+        background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+        color: white;
+      }
+
+      button.primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(59, 130, 246, 0.3);
+      }
+
+      button.secondary {
+        background: rgba(148, 163, 184, 0.1);
+        color: #cbd5e1;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+
+      button.secondary:hover {
+        background: rgba(148, 163, 184, 0.15);
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+
+      button.tertiary {
+        background: transparent;
+        color: #3b82f6;
+        border: 1px solid rgba(59, 130, 246, 0.3);
+      }
+
+      button.tertiary:hover {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: #3b82f6;
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      /* Button Group */
+      .button-group {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .button-group button {
+        flex: 1;
+        min-width: 100px;
+      }
+
+      /* Divider */
+      .divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.2), transparent);
+        margin: 20px 0;
+      }
+
+      /* Table */
+      .table-wrapper {
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      thead {
+        background: rgba(30, 41, 59, 0.4);
+      }
+
+      th {
+        padding: 12px 8px;
+        text-align: left;
+        font-weight: 600;
+        color: #cbd5e1;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+      }
+
+      td {
+        padding: 12px 8px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.05);
+        color: #cbd5e1;
+      }
+
+      tbody tr:hover {
+        background: rgba(59, 130, 246, 0.05);
+      }
+
+      td.state-dark {
+        color: #ef4444;
+        font-weight: 600;
+      }
+
+      td.state-light {
+        color: #10b981;
+        font-weight: 600;
+      }
+
+      /* Info Box */
+      .info-box {
+        background: rgba(59, 130, 246, 0.1);
+        border-left: 3px solid #3b82f6;
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: #cbd5e1;
+        margin-bottom: 16px;
+      }
+
+      /* Flex helpers */
+      .flex {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .flex-between {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .header-left h1 {
+          font-size: 24px;
+        }
+
+        .card {
+          padding: 18px;
+        }
+
+        .button-group {
+          flex-direction: column;
+        }
+
+        .button-group button {
+          width: 100%;
+        }
+
+        .card h2 {
+          font-size: 16px;
+        }
+      }
+
+      /* Icon-like styling */
+      .icon {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .time-compact { line-height: 1.2; }
+      .time-compact div:first-child { font-weight: 600; }
+      .time-compact div:last-child { color: #94a3b8; font-size: 12px; }
     </style>
   </head>
   <body>
-    <h2>Monitoring LDR + Servo</h2>
-
-    <div class="row">
-      <div class="card">
-        <canvas id="radar" width="400" height="400"></canvas>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <div class="header-left">
+          <h1>📡 IoT Scan Monitor</h1>
+          <p>Real-time LDR sensor & servo control system</p>
+        </div>
+        <div class="status-section">
+          <span class="status-label">API Status</span>
+          <span id="apiStatus" class="badge ok">
+            <span class="status-dot"></span>
+            <span>cek...</span>
+          </span>
+        </div>
       </div>
 
-      <div class="card">
-        <h3>Kontrol</h3>
-        <form id="frm">
-          <label
-            >Mode Servo:
-            <select name="servo_mode" id="servo_mode">
-              <option value="auto">auto</option>
-              <option value="manual">manual</option>
+      <!-- Main Grid -->
+      <div class="grid">
+        <!-- Radar Card -->
+        <div class="card">
+          <h2>🎯 Radar View</h2>
+
+          <div class="control-group">
+            <label>Auto Refresh Interval (seconds)</label>
+            <div class="flex">
+              <input type="number" id="pollSec" value="2" min="1" style="flex: 1;" />
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button class="primary" id="btnRefresh">Refresh Now</button>
+            <button class="secondary" id="btnToggleAuto">Start Auto</button>
+          </div>
+          <p style="font-size: 12px; color: #94a3b8; margin-bottom: 16px; margin-top: 24px;">Angle vs. Sensor State visualization</p>
+          <canvas id="radar" width="400" height="450" style="margin-bottom: 0;"></canvas>
+        </div>
+
+        <!-- Servo Control Card -->
+        <div class="card">
+          <h2>⚙️ Servo Control</h2>
+          
+          <div class="control-group">
+            <label>Mode</label>
+            <select id="servoMode">
+              <option value="auto">Auto</option>
+              <option value="manual">Manual</option>
             </select>
-          </label>
-          <label
-            >Target Sudut (0–180):
-            <input
-              type="number"
-              name="servo_target"
-              id="servo_target"
-              min="0"
-              max="180"
-              value="90"
-            />
-          </label>
-          <label
-            >Yellow Logic:
-            <select name="yellow_logic" id="yellow_logic">
-              <option value="gelap_singkat">gelap_singkat</option>
-              <option value="terang_singkat">terang_singkat</option>
+          </div>
+
+          <div class="control-group">
+            <label>Target Angle (0-180°)</label>
+            <input type="number" id="servoTarget" min="0" max="180" value="90" />
+          </div>
+
+          <button class="primary" style="width: 100%; margin-bottom: 20px;" id="btnSaveServo">Save Servo</button>
+
+          <div class="divider"></div>
+
+          <h3>Logic Thresholds</h3>
+
+          <div class="control-group">
+            <label>Yellow Logic</label>
+            <select id="yellowLogic">
+              <option value="gelap_singkat">Gelap Singkat</option>
+              <option value="gelap_apa_aja">Gelap Apa Aja</option>
             </select>
-          </label>
-          <label
-            >RED Hold (ms):
-            <input
-              type="number"
-              name="red_hold_ms"
-              id="red_hold_ms"
-              value="1500"
-            />
-          </label>
-          <button type="submit">Simpan</button>
-        </form>
-        <div id="msg" class="pill ok" style="display: none; margin-top: 8px">
-          Tersimpan
+          </div>
+
+          <div class="control-group">
+            <label>Red Hold (ms)</label>
+            <input type="number" id="redHoldMs" min="100" step="100" value="1500" />
+          </div>
+
+          <button class="secondary" style="width: 100%;" id="btnSaveSettings">Save Settings</button>
+        </div>
+
+        <!-- Data Table Card -->
+        <div class="card">
+          <h2>📊 Latest Data</h2>
+
+          <div style="margin-bottom: 16px;">
+            <a href="/api/ldr/export.csv" target="_blank" style="color: #3b82f6; text-decoration: none; font-size: 13px; font-weight: 600;">
+              ↓ Download CSV Report
+            </a>
+          </div>
+
+          <div class="table-wrapper" style="overflow-y: scroll;">
+            <table id="tbl">
+              <thead>
+                <tr>
+                  <th style="width: 35%;">Time</th>
+                  <th style="width: 20%;">Angle</th>
+                  <th style="width: 25%;">State</th>
+                  <th style="width: 20%;">Raw</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
 
     <script>
-      const cv = document.getElementById("radar");
-      const ctx = cv.getContext("2d");
-      const C = { cx: cv.width / 2, cy: cv.height / 2, r: cv.width / 2 - 18 };
+      function fmtTime(ts) {
+        // Return {date: 'dd/mm/yyyy', time: 'hh:mm:ss'}
+        if (!ts || typeof ts !== 'string') return { date: '-', time: '-' };
+        // Expecting formats like 'YYYY-MM-DD HH:MM:SS' or ISO
+        const m = ts.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+        if (m) {
+          const [, y, mo, d, h, mi, s] = m;
+          return { date: `${d}/${mo}/${y}`, time: `${h}:${mi}:${s}` };
+        }
+        // Fallback: try Date() for ISO or other parseable strings
+        const dt = new Date(ts);
+        if (!isNaN(dt)) {
+          const pad = (n) => String(n).padStart(2, '0');
+          return {
+            date: `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`,
+            time: `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`,
+          };
+        }
+        return { date: '-', time: '-' };
+      }
 
-      function drawFrame() {
-        ctx.clearRect(0, 0, cv.width, cv.height);
-        // grid
-        ctx.strokeStyle = "#20304a";
-        [0.25, 0.5, 0.75, 1].forEach((f) => {
+      const elStatus = document.getElementById("apiStatus");
+      const elTblBody = document.querySelector("#tbl tbody");
+      const elRadar = document.getElementById("radar");
+      const ctx = elRadar.getContext("2d");
+
+      const elMode = document.getElementById("servoMode");
+      const elTarget = document.getElementById("servoTarget");
+      const elYLogic = document.getElementById("yellowLogic");
+      const elRedHold = document.getElementById("redHoldMs");
+      const elBtnSaveServo = document.getElementById("btnSaveServo");
+      const elBtnSaveSettings = document.getElementById("btnSaveSettings");
+      const elBtnRefresh = document.getElementById("btnRefresh");
+      const elToggleAuto = document.getElementById("btnToggleAuto");
+      const elPollSec = document.getElementById("pollSec");
+
+      let autoTimer = null;
+
+      async function ping() {
+        try {
+          const r = await fetch("/api/settings");
+          if (!r.ok) throw new Error(r.status);
+          const s = await r.json();
+          elMode.value = s.servo_mode;
+          elTarget.value = s.servo_target;
+          elYLogic.value = s.yellow_logic;
+          elRedHold.value = s.red_hold_ms;
+
+          elStatus.textContent = "online";
+          elStatus.classList.remove("warn");
+          elStatus.classList.add("ok");
+          elStatus.innerHTML = '<span class="status-dot"></span><span>online</span>';
+        } catch (e) {
+          elStatus.textContent = "offline";
+          elStatus.classList.remove("ok");
+          elStatus.classList.add("warn");
+          elStatus.innerHTML = '<span class="status-dot"></span><span>offline</span>';
+        }
+      }
+
+      function pol2xy(angleDeg, radius, cx, cy) {
+        const rad = ((angleDeg - 90) * Math.PI) / 180;
+        return [cx + radius * Math.cos(rad), cy + radius * Math.sin(rad)];
+      }
+
+      function drawRadar(rows) {
+        ctx.clearRect(0, 0, elRadar.width, elRadar.height);
+        const cx = elRadar.width / 2,
+          cy = elRadar.height / 2;
+        const R = Math.min(cx, cy) - 20;
+
+        // Grid lingkaran
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
+        ctx.lineWidth = 1;
+        [0.33, 0.66, 1.0].forEach((f) => {
           ctx.beginPath();
-          ctx.arc(C.cx, C.cy, C.r * f, 0, 2 * Math.PI);
+          ctx.arc(cx, cy, R * f, 0, 2 * Math.PI);
+          ctx.stroke();
+        });
+
+        // Sumbu utama
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx - R, cy);
+        ctx.lineTo(cx + R, cy);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - R);
+        ctx.lineTo(cx, cy + R);
+        ctx.stroke();
+
+        // Label derajat
+        ctx.fillStyle = "rgba(203, 213, 225, 0.4)";
+        ctx.font = "11px sans-serif";
+        ctx.textAlign = "center";
+        [0, 90, 180, 270].forEach((deg) => {
+          const [x, y] = pol2xy(deg, R + 15, cx, cy);
+          ctx.fillText(deg + "°", x, y);
+        });
+
+        // Plot titik: merah = gelap (1), hijau = terang (0)
+        rows.forEach((row) => {
+          const angle = Number(row.angle_deg) || 0;
+          const isDark = Number(row.ldr_state) === 1;
+          const r = isDark ? R * 0.9 : R * 0.6;
+          const [x, y] = pol2xy(angle, r, cx, cy);
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = isDark ? "#ef4444" : "#10b981";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+          ctx.lineWidth = 1;
           ctx.stroke();
         });
       }
 
-      async function fetchData() {
-        const r = await fetch("/api/ldr/latest?n=180");
-        const data = await r.json();
-        drawFrame();
-        // plot: hijau terang, merah gelap
-        data.forEach((row) => {
-          const ang = ((row.angle_deg || 0) * Math.PI) / 180;
-          const rr = C.r * 0.95;
-          const x = C.cx + rr * Math.cos(ang);
-          const y = C.cy - rr * Math.sin(ang);
-          ctx.beginPath();
-          ctx.fillStyle = row.ldr_state ? "#ff5252" : "#29d398";
-          ctx.arc(x, y, 4, 0, 2 * Math.PI);
-          ctx.fill();
-        });
+      async function loadLatest() {
+        try {
+          const r = await fetch("/api/ldr/latest?n=180");
+          const rows = await r.json();
+
+          elTblBody.innerHTML = rows
+            .slice(0, 15)
+            .map((r) => {
+              const isDark = r.ldr_state == 1;
+              const st = isDark ? "Gelap" : "Terang";
+              const stateClass = isDark ? "state-dark" : "state-light";
+              return `<tr>
+                <td><div class="time-compact"><div>${fmtTime(r.created_at).date}</div><div>${fmtTime(r.created_at).time}</div></div></td>
+                <td style="text-align: right;">${r.angle_deg}°</td>
+                <td class="${stateClass}">${st}</td>
+                <td>${r.raw_value ?? "-"}</td>
+              </tr>`;
+            })
+            .join("");
+
+          drawRadar(rows);
+        } catch (e) {
+          console.error("Load error:", e);
+        }
       }
 
-      async function loadSettings() {
-        const s = await (await fetch("/api/settings")).json();
-        ["servo_mode", "servo_target", "yellow_logic", "red_hold_ms"].forEach(
-          (k) => {
-            const el = document.getElementById(k);
-            if (el) el.value = s[k];
-          }
-        );
-      }
-
-      document.getElementById("frm").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const body = Object.fromEntries(fd.entries());
-        const res = await fetch("/api/settings", {
+      async function saveServo() {
+        const body = {
+          servo_mode: elMode.value,
+          servo_target: Number(elTarget.value || 0),
+        };
+        const r = await fetch("/api/settings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (res.ok) {
-          const msg = document.getElementById("msg");
-          msg.style.display = "inline-block";
-          setTimeout(() => (msg.style.display = "none"), 1200);
-        }
-      });
+        if (r.ok) alert("✓ Servo settings saved successfully");
+        else alert("✗ Failed to save servo settings");
+      }
 
-      setInterval(fetchData, 1000);
-      loadSettings();
-      fetchData();
+      async function saveSettings() {
+        const body = {
+          yellow_logic: elYLogic.value,
+          red_hold_ms: Number(elRedHold.value || 1500),
+        };
+        const r = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) alert("✓ Logic settings saved successfully");
+        else alert("✗ Failed to save settings");
+      }
+
+      function toggleAuto() {
+        if (autoTimer) {
+          clearInterval(autoTimer);
+          autoTimer = null;
+          elToggleAuto.textContent = "Start Auto";
+        } else {
+          const sec = Math.max(1, Number(elPollSec.value || 2));
+          autoTimer = setInterval(loadLatest, sec * 1000);
+          elToggleAuto.textContent = "Stop Auto";
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        await ping();
+        await loadLatest();
+        elBtnRefresh.onclick = loadLatest;
+        elBtnSaveServo.onclick = saveServo;
+        elBtnSaveSettings.onclick = saveSettings;
+        elToggleAuto.onclick = toggleAuto;
+      });
     </script>
   </body>
 </html>

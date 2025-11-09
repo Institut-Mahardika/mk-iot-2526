@@ -1,7 +1,6 @@
 # app.py
 from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
-import mysql
 from db import init_mysql, get_conn
 import os
 
@@ -119,17 +118,22 @@ def servo_target():
 def export_csv():
     from io import StringIO
     import csv
-    conn = mysql.connection
-    cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT id,device_id,angle_deg,ldr_state,raw_value,created_at FROM ldr_readings ORDER BY id DESC LIMIT 2000")
-    rows = cur.fetchall()
-    cur.close()
+    # gunakan helper pool yang sudah ada
+    with get_conn() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "SELECT id,device_id,angle_deg,ldr_state,raw_value,created_at "
+            "FROM ldr_readings ORDER BY id DESC LIMIT 2000"
+        )
+        rows = cur.fetchall()
+        cur.close()
 
     si = StringIO()
     w = csv.writer(si)
     w.writerow(["id","device_id","angle_deg","ldr_state","raw_value","created_at"])
     for r in rows:
         w.writerow([r["id"], r["device_id"], r["angle_deg"], r["ldr_state"], r["raw_value"] or "", r["created_at"]])
+
     return (si.getvalue(), 200, {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": "attachment; filename=ldr_readings.csv"
