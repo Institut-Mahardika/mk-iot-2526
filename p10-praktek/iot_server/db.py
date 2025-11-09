@@ -1,20 +1,15 @@
-from mysql.connector import pooling
+from flask_mysql_connector import MySQL
 
-_pool = None
+mysql = MySQL()
 
 def init_mysql(app):
-    global _pool
-    cfg = dict(
-        host=app.config["MYSQL_HOST"],
-        port=app.config["MYSQL_PORT"],
-        database=app.config["MYSQL_DB"],
-        user=app.config["MYSQL_USER"],
-        password=app.config["MYSQL_PASSWORD"],
-        pool_name="iot_pool",
-        pool_size=app.config.get("MYSQL_POOL_SIZE", 5),
-        autocommit=False,
-    )
-    _pool = pooling.MySQLConnectionPool(**cfg)
+    # Konfigurasi sesuai .env (sudah di-set di app.py)
+    # Kunci yang dipakai lib ini: MYSQL_HOST, MYSQL_PORT, MYSQL_USER,
+    # MYSQL_PASSWORD, MYSQL_DATABASE (alias MYSQL_DB kita)
+    if "MYSQL_DATABASE" not in app.config:
+        # terima alias dari app.config["MYSQL_DB"]
+        app.config["MYSQL_DATABASE"] = app.config.get("MYSQL_DB")
 
-def get_conn():
-    return _pool.get_connection()
+    # Optional tuning (abaikan jika tidak perlu)
+    app.config.setdefault("MYSQL_CONNECT_TIMEOUT", 10)
+    mysql.init_app(app)
