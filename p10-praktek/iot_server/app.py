@@ -4,6 +4,13 @@ from dotenv import load_dotenv
 from db import init_mysql, get_conn
 import os
 import requests
+import time
+import math
+import io
+
+import matplotlib
+matplotlib.use("Agg")        # backend non-GUI untuk generate PNG
+import matplotlib.pyplot as plt
 
 load_dotenv()
 
@@ -23,6 +30,9 @@ app.config.update(
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID")
 
+# Cooldown supaya bot tidak spam
+ALERT_COOLDOWN_SEC = int(os.getenv("ALERT_COOLDOWN_SEC", "30"))
+LAST_ALERT_TS = 0.0   # di-update saat kirim alert merah
 
 def send_telegram(text: str):
     """Kirim pesan sederhana ke Telegram. Silent kalau belum di-set."""
@@ -46,6 +56,111 @@ def send_telegram(text: str):
     except Exception as e:
         print("Error send telegram:", e)
 
+def send_radar_snapshot():
+    """Ambil data terakhir, render radar sederhana, kirim ke Telegram."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram not configured, skip radar snapshot")
+        return
+
+    with get_conn() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "SELECT angle_deg, ldr_state "
+            "FROM ldr_readings ORDER BY id DESC LIMIT 180"
+        )
+        rows = cur.fetchall()
+        cur.close()
+
+    if not rows:
+        send_telegram("Radar snapshot gagal: belum ada data.")
+        return
+
+    # urutkan berdasarkan sudut
+    rows = sorted(rows, key=lambda r: r["angle_deg"])
+
+    angles_deg = [r["angle_deg"] for r in rows]
+    angles_rad = [a * math.pi / 180.0 for a in angles_deg]
+    radius = [1.0 if r["ldr_state"] == 1 else 0.6 for r in rows]
+    colors = ["#ff5757" if r["ldr_state"] == 1 else "#00ff99" for r in rows]
+
+    fig = plt.figure(figsize=(4, 4))
+    ax = fig.add_subplot(111, polar=True)
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.scatter(angles_rad, radius, c=colors, s=22)
+    ax.set_title("LDR Radar Snapshot", pad=16)
+    ax.grid(alpha=0.2)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    files = {"photo": ("radar.png", buf, "image/png")}
+    data = {"chat_id": TELEGRAM_CHAT_ID, "caption": "📡 Radar snapshot terbaru"}
+    try:
+        r = requests.post(url, data=data, files=files, timeout=10)
+        if not r.ok:
+            print("send_radar_snapshot failed:", r.status_code, r.text)
+    except Exception as e:
+        print("send_radar_snapshot error:", e)
+
+def send_daily_summary():
+    """Buat grafik ringkasan harian dan kirim ke Telegram."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram not configured, skip daily summary")
+        return
+
+    with get_conn() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT HOUR(created_at) AS h,
+                   SUM(ldr_state = 1) AS dark_count,
+                   COUNT(*) AS total_count
+            FROM ldr_readings
+            WHERE DATE(created_at) = CURDATE()
+            GROUP BY HOUR(created_at)
+            ORDER BY h
+            """
+        )
+        rows = cur.fetchall()
+        cur.close()
+
+    if not rows:
+        send_telegram("Ringkasan harian: belum ada data untuk hari ini.")
+        return
+
+    hours = [r["h"] for r in rows]
+    dark = [r["dark_count"] for r in rows]
+    total = [r["total_count"] for r in rows]
+
+    fig, ax = plt.subplots(figsize=(5, 3))
+    ax.plot(hours, total, label="Total scan")
+    ax.plot(hours, dark, label="Gelap (state=1)")
+    ax.set_xlabel("Jam")
+    ax.set_ylabel("Jumlah")
+    ax.set_title("Ringkasan Harian LDR (hari ini)")
+    ax.set_xticks(hours)
+    ax.grid(alpha=0.2)
+    ax.legend()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    files = {"photo": ("summary.png", buf, "image/png")}
+    data = {"chat_id": TELEGRAM_CHAT_ID, "caption": "📈 Ringkasan harian LDR"}
+    try:
+        r = requests.post(url, data=data, files=files, timeout=10)
+        if not r.ok:
+            print("send_daily_summary failed:", r.status_code, r.text)
+    except Exception as e:
+        print("send_daily_summary error:", e)
+
 # init pool
 init_mysql(app)
 
@@ -57,14 +172,17 @@ def home():
 @app.post("/api/ldr/insert")
 def insert_ldr():
     """
-    Body JSON:
+    Body JSON (contoh):
     {
       "device_id": "esp32-001",
       "angle_deg": 0..180,
       "ldr_state": 0|1,
-      "raw_value": 0..4095 (opsional)
+      "raw_value": 0..4095 (opsional),
+      "level": 0|1|2      # opsional; 2 = MERAH (gelap lama)
     }
     """
+    global LAST_ALERT_TS
+
     data = request.get_json(silent=True) or {}
     try:
         device_id = data.get("device_id", "esp32-001")
@@ -73,6 +191,9 @@ def insert_ldr():
         raw_value = data.get("raw_value")
         if raw_value is not None:
             raw_value = int(raw_value)
+
+        # level dari ESP32 (0=green,1=yellow,2=red). Jika belum ada, pakai -1
+        level = int(data.get("level", -1))
 
         with get_conn() as conn:
             cur = conn.cursor(dictionary=True)
@@ -84,19 +205,32 @@ def insert_ldr():
             conn.commit()
             cur.close()
 
-        # --- Trigger Telegram: kalau GELAP (ldr_state == 1) ---
-        if ldr_state == 1 and angle_deg in (80, 100):
+        # --- Logika kapan dianggap MERAH ---
+        # 1) Kalau level==2 dari perangkat → jelas MERAH
+        # 2) Fallback kalau firmware lama (tanpa level): sudut 80/100 & ldr_state=1
+        is_red = False
+        if level == 2:
+            is_red = True
+        elif level == -1 and (ldr_state == 1 and angle_deg in (80, 100)):
+            is_red = True
+
+        # --- Trigger Telegram hanya saat MERAH + cooldown ---
+        now_ts = time.time()
+        if is_red and (now_ts - LAST_ALERT_TS) > ALERT_COOLDOWN_SEC:
             msg = (
-                f"*ALERT LDR GELAP*\n"
+                "*ALERT LDR MERAH (GELAP LAMA)*\n"
                 f"Device : `{device_id}`\n"
                 f"Sudut  : *{angle_deg}°*\n"
                 f"State  : GELAP\n"
+                f"Level  : {level if level != -1 else 'fallback'}\n"
                 f"Raw    : {raw_value if raw_value is not None else '-'}"
             )
             send_telegram(msg)
-            
+            LAST_ALERT_TS = now_ts
+
         return jsonify({"ok": True}), 200
     except Exception as e:
+        print("insert_ldr error:", e)
         return jsonify({"ok": False, "message": str(e)}), 400
 
 # --------------- API QUERY DATA -------------
@@ -152,13 +286,13 @@ def servo_target():
         cur.close()
     target = -1 if s["servo_mode"] == "auto" else int(s["servo_target"])
     return jsonify({"target": target}), 200
-  
+
 # ------------- API EXPORT CSV -------------
 @app.get("/api/ldr/export.csv")
 def export_csv():
     from io import StringIO
     import csv
-    # gunakan helper pool yang sudah ada
+
     with get_conn() as conn:
         cur = conn.cursor(dictionary=True)
         cur.execute(
@@ -170,14 +304,39 @@ def export_csv():
 
     si = StringIO()
     w = csv.writer(si)
-    w.writerow(["id","device_id","angle_deg","ldr_state","raw_value","created_at"])
+    w.writerow(["id", "device_id", "angle_deg", "ldr_state", "raw_value", "created_at"])
     for r in rows:
-        w.writerow([r["id"], r["device_id"], r["angle_deg"], r["ldr_state"], r["raw_value"] or "", r["created_at"]])
+        w.writerow([
+            r["id"],
+            r["device_id"],
+            r["angle_deg"],
+            r["ldr_state"],
+            r["raw_value"] or "",
+            r["created_at"],
+        ])
 
-    return (si.getvalue(), 200, {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": "attachment; filename=ldr_readings.csv"
-    })
+    return (
+        si.getvalue(),
+        200,
+        {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": "attachment; filename=ldr_readings.csv",
+        },
+    )
+
+# ------------- API NOTIFY TELEGRAM -------------
+@app.get("/api/notify/radar")
+def notify_radar():
+    """Trigger manual kirim radar snapshot ke Telegram."""
+    send_radar_snapshot()
+    return jsonify({"ok": True}), 200
+
+@app.get("/api/notify/daily")
+def notify_daily():
+    """Trigger manual kirim ringkasan harian ke Telegram."""
+    send_daily_summary()
+    return jsonify({"ok": True}), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5100, debug=True)
