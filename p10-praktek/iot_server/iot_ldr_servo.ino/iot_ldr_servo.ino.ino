@@ -5,12 +5,12 @@
 Servo myServo;
 
 // --- WiFi ---
-const char* SSID     = "Institut Mahardika";
+const char* SSID     = "AN13 📱";
 const char* PASS     = "";
 
 // --- API ---
 const char* DEVICE_ID  = "esp32-001";
-const char* API_URL    = "http://192.168.20.195:5100/api/ldr/insert"; // ganti jika IP berubah
+const char* API_URL    = "http://172.20.10.2:5100/api/ldr/insert"; // ganti jika IP berubah
 
 // --- Pin mapping ---
 #define SERVO_PIN   15

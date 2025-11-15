@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 from db import init_mysql, get_conn
 import os
+import requests
 
 load_dotenv()
 
@@ -17,6 +18,33 @@ app.config.update(
     DB_PASS=os.getenv("MYSQL_PASSWORD", "ServBay.dev"),
     DB_POOL_SIZE=int(os.getenv("DB_POOL_SIZE", "5")),
 )
+
+# --- Telegram config ---
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID")
+
+
+def send_telegram(text: str):
+    """Kirim pesan sederhana ke Telegram. Silent kalau belum di-set."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram not configured, skip send")
+        return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        r = requests.post(
+            url,
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": text,
+                "parse_mode": "Markdown",
+            },
+            timeout=5,
+        )
+        if not r.ok:
+            print("Failed send telegram:", r.status_code, r.text)
+    except Exception as e:
+        print("Error send telegram:", e)
 
 # init pool
 init_mysql(app)
@@ -55,6 +83,18 @@ def insert_ldr():
             )
             conn.commit()
             cur.close()
+
+        # --- Trigger Telegram: kalau GELAP (ldr_state == 1) ---
+        if ldr_state == 1 and angle_deg in (80, 100):
+            msg = (
+                f"*ALERT LDR GELAP*\n"
+                f"Device : `{device_id}`\n"
+                f"Sudut  : *{angle_deg}°*\n"
+                f"State  : GELAP\n"
+                f"Raw    : {raw_value if raw_value is not None else '-'}"
+            )
+            send_telegram(msg)
+            
         return jsonify({"ok": True}), 200
     except Exception as e:
         return jsonify({"ok": False, "message": str(e)}), 400
