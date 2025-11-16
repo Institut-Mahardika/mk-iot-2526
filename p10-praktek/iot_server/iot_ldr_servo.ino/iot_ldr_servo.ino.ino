@@ -5,12 +5,12 @@
 Servo myServo;
 
 // --- WiFi ---
-const char* SSID     = "AN13 📱";
-const char* PASS     = "";
+const char* SSID     = "AN13";
+const char* PASS     = "000999888";
 
 // --- API ---
-const char* DEVICE_ID  = "esp32-001";
-const char* API_URL    = "http://172.20.10.2:5100/api/ldr/insert"; // ganti jika IP berubah
+const char* DEVICE_ID  = "esp32-111";
+const char* API_URL    = "http://172.20.10.8:5100/api/ldr/insert"; // ganti jika IP berubah
 
 // --- Pin mapping ---
 #define SERVO_PIN   15
