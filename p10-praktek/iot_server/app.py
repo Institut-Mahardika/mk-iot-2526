@@ -7,6 +7,7 @@ import requests
 import time
 import math
 import io
+from typing import List, Dict, Any
 
 import matplotlib
 matplotlib.use("Agg")        # backend non-GUI untuk generate PNG
@@ -16,28 +17,32 @@ load_dotenv()
 
 app = Flask(__name__, static_folder="static", static_url_path="/")
 
-# Konfigurasi DB dari ENV (tetap sama key-nya agar kompatibel dengan .env kamu)
-app.config.update(
-    DB_HOST=os.getenv("MYSQL_HOST", "127.0.0.1"),
-    DB_PORT=int(os.getenv("MYSQL_PORT", 3306)),
-    DB_NAME=os.getenv("MYSQL_DB", "iot_scan"),
-    DB_USER=os.getenv("MYSQL_USER", "root"),
-    DB_PASS=os.getenv("MYSQL_PASSWORD", "ServBay.dev"),
-    DB_POOL_SIZE=int(os.getenv("DB_POOL_SIZE", "5")),
-)
+# --- Load configuration from environment ---
+def load_config(app: Flask) -> None:
+    # Konfigurasi DB dari ENV (tetap sama key-nya agar kompatibel dengan .env kamu)
+    app.config.update(
+        DB_HOST=os.getenv("MYSQL_HOST", "127.0.0.1"),
+        DB_PORT=int(os.getenv("MYSQL_PORT", 3306)),
+        DB_NAME=os.getenv("MYSQL_DB", "iot_scan"),
+        DB_USER=os.getenv("MYSQL_USER", "root"),
+        DB_PASS=os.getenv("MYSQL_PASSWORD", "ServBay.dev"),
+        DB_POOL_SIZE=int(os.getenv("DB_POOL_SIZE", "5")),
+    )
+
+load_config(app)
 
 # --- Telegram config ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Cooldown supaya bot tidak spam
 ALERT_COOLDOWN_SEC = int(os.getenv("ALERT_COOLDOWN_SEC", "30"))
 LAST_ALERT_TS = 0.0   # di-update saat kirim alert merah
 
-def send_telegram(text: str):
+def send_telegram(text: str) -> None:
     """Kirim pesan sederhana ke Telegram. Silent kalau belum di-set."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Telegram not configured, skip send")
+        print("[telegram] not configured, skip send")
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -52,24 +57,26 @@ def send_telegram(text: str):
             timeout=5,
         )
         if not r.ok:
-            print("Failed send telegram:", r.status_code, r.text)
+            print("[telegram] send failed:", r.status_code, r.text)
     except Exception as e:
-        print("Error send telegram:", e)
+        print("[telegram] error:", e)
 
-def send_radar_snapshot():
+def send_radar_snapshot() -> None:
     """Ambil data terakhir, render radar sederhana, kirim ke Telegram."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Telegram not configured, skip radar snapshot")
+        print("[telegram] not configured, skip radar snapshot")
         return
 
     with get_conn() as conn:
         cur = conn.cursor(dictionary=True)
-        cur.execute(
-            "SELECT angle_deg, ldr_state "
-            "FROM ldr_readings ORDER BY id DESC LIMIT 180"
-        )
-        rows = cur.fetchall()
-        cur.close()
+        try:
+            cur.execute(
+                "SELECT angle_deg, ldr_state "
+                "FROM ldr_readings ORDER BY id DESC LIMIT 180"
+            )
+            rows: List[Dict[str, Any]] = cur.fetchall()
+        finally:
+            cur.close()
 
     if not rows:
         send_telegram("Radar snapshot gagal: belum ada data.")
@@ -102,31 +109,33 @@ def send_radar_snapshot():
     try:
         r = requests.post(url, data=data, files=files, timeout=10)
         if not r.ok:
-            print("send_radar_snapshot failed:", r.status_code, r.text)
+            print("[telegram] send_radar_snapshot failed:", r.status_code, r.text)
     except Exception as e:
-        print("send_radar_snapshot error:", e)
+        print("[telegram] send_radar_snapshot error:", e)
 
-def send_daily_summary():
+def send_daily_summary() -> None:
     """Buat grafik ringkasan harian dan kirim ke Telegram."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Telegram not configured, skip daily summary")
+        print("[telegram] not configured, skip daily summary")
         return
 
     with get_conn() as conn:
         cur = conn.cursor(dictionary=True)
-        cur.execute(
-            """
-            SELECT HOUR(created_at) AS h,
-                   SUM(ldr_state = 1) AS dark_count,
-                   COUNT(*) AS total_count
-            FROM ldr_readings
-            WHERE DATE(created_at) = CURDATE()
-            GROUP BY HOUR(created_at)
-            ORDER BY h
-            """
-        )
-        rows = cur.fetchall()
-        cur.close()
+        try:
+            cur.execute(
+                """
+                SELECT HOUR(created_at) AS h,
+                       SUM(ldr_state = 1) AS dark_count,
+                       COUNT(*) AS total_count
+                FROM ldr_readings
+                WHERE DATE(created_at) = CURDATE()
+                GROUP BY HOUR(created_at)
+                ORDER BY h
+                """
+            )
+            rows: List[Dict[str, Any]] = cur.fetchall()
+        finally:
+            cur.close()
 
     if not rows:
         send_telegram("Ringkasan harian: belum ada data untuk hari ini.")
@@ -157,9 +166,9 @@ def send_daily_summary():
     try:
         r = requests.post(url, data=data, files=files, timeout=10)
         if not r.ok:
-            print("send_daily_summary failed:", r.status_code, r.text)
+            print("[telegram] send_daily_summary failed:", r.status_code, r.text)
     except Exception as e:
-        print("send_daily_summary error:", e)
+        print("[telegram] send_daily_summary error:", e)
 
 # init pool
 init_mysql(app)
@@ -197,18 +206,20 @@ def insert_ldr():
 
         with get_conn() as conn:
             cur = conn.cursor(dictionary=True)
-            cur.execute(
-                "INSERT INTO ldr_readings(device_id, angle_deg, ldr_state, raw_value) "
-                "VALUES (%s,%s,%s,%s)",
-                (device_id, angle_deg, ldr_state, raw_value),
-            )
-            conn.commit()
-            cur.close()
+            try:
+                cur.execute(
+                    "INSERT INTO ldr_readings(device_id, angle_deg, ldr_state, raw_value) "
+                    "VALUES (%s,%s,%s,%s)",
+                    (device_id, angle_deg, ldr_state, raw_value),
+                )
+                conn.commit()
+            finally:
+                cur.close()
 
         # --- Logika kapan dianggap MERAH ---
         # 1) Kalau level==2 dari perangkat → jelas MERAH
         # 2) Fallback kalau firmware lama (tanpa level): sudut 80/100 & ldr_state=1
-        is_red = False
+        is_red = False  # menentukan apakah kondisi dianggap merah
         if level == 2:
             is_red = True
         elif level == -1 and (ldr_state == 1 and angle_deg in (80, 100)):
@@ -239,12 +250,14 @@ def latest():
     n = int(request.args.get("n", 180))
     with get_conn() as conn:
         cur = conn.cursor(dictionary=True)
-        cur.execute(
-            "SELECT angle_deg, ldr_state, raw_value, created_at "
-            "FROM ldr_readings ORDER BY id DESC LIMIT %s", (n,)
-        )
-        rows = cur.fetchall()
-        cur.close()
+        try:
+            cur.execute(
+                "SELECT angle_deg, ldr_state, raw_value, created_at "
+                "FROM ldr_readings ORDER BY id DESC LIMIT %s", (n,)
+            )
+            rows: List[Dict[str, Any]] = cur.fetchall()
+        finally:
+            cur.close()
     return jsonify(rows), 200
 
 # --------------- API SETTINGS ---------------
@@ -252,9 +265,11 @@ def latest():
 def get_settings():
     with get_conn() as conn:
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT * FROM settings WHERE id=1")
-        row = cur.fetchone()
-        cur.close()
+        try:
+            cur.execute("SELECT * FROM settings WHERE id=1")
+            row = cur.fetchone()
+        finally:
+            cur.close()
     return jsonify(row), 200
 
 @app.post("/api/settings")
@@ -271,9 +286,11 @@ def update_settings():
     params.append(1)
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute(f"UPDATE settings SET {', '.join(fields)} WHERE id=%s", params)
-        conn.commit()
-        cur.close()
+        try:
+            cur.execute(f"UPDATE settings SET {', '.join(fields)} WHERE id=%s", params)
+            conn.commit()
+        finally:
+            cur.close()
     return jsonify({"ok": True}), 200
 
 # -------------- API COMMAND DEVICE ----------
@@ -281,9 +298,11 @@ def update_settings():
 def servo_target():
     with get_conn() as conn:
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT servo_mode, servo_target FROM settings WHERE id=1")
-        s = cur.fetchone()
-        cur.close()
+        try:
+            cur.execute("SELECT servo_mode, servo_target FROM settings WHERE id=1")
+            s = cur.fetchone()
+        finally:
+            cur.close()
     target = -1 if s["servo_mode"] == "auto" else int(s["servo_target"])
     return jsonify({"target": target}), 200
 
@@ -295,12 +314,14 @@ def export_csv():
 
     with get_conn() as conn:
         cur = conn.cursor(dictionary=True)
-        cur.execute(
-            "SELECT id,device_id,angle_deg,ldr_state,raw_value,created_at "
-            "FROM ldr_readings ORDER BY id DESC LIMIT 2000"
-        )
-        rows = cur.fetchall()
-        cur.close()
+        try:
+            cur.execute(
+                "SELECT id,device_id,angle_deg,ldr_state,raw_value,created_at "
+                "FROM ldr_readings ORDER BY id DESC LIMIT 2000"
+            )
+            rows: List[Dict[str, Any]] = cur.fetchall()
+        finally:
+            cur.close()
 
     si = StringIO()
     w = csv.writer(si)

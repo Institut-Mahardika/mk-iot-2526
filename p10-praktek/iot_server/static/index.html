@@ -12,8 +12,14 @@
       }
 
       body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-        background: linear-gradient(135deg, #0f172a 0%, #1a1f3a 50%, #132a4b 100%);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+          "Oxygen", "Ubuntu", "Cantarell", sans-serif;
+        background: linear-gradient(
+          135deg,
+          #0f172a 0%,
+          #1a1f3a 50%,
+          #132a4b 100%
+        );
         color: #e2e8f0;
         min-height: 100vh;
         padding: 24px 16px;
@@ -99,7 +105,8 @@
       }
 
       @keyframes pulse {
-        0%, 100% {
+        0%,
+        100% {
           opacity: 1;
         }
         50% {
@@ -166,7 +173,11 @@
         width: 100%;
         max-width: 100%;
         height: auto;
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(30, 41, 59, 0.3) 100%);
+        background: linear-gradient(
+          135deg,
+          rgba(30, 41, 59, 0.5) 0%,
+          rgba(30, 41, 59, 0.3) 100%
+        );
         border-radius: 8px;
         margin-bottom: 16px;
       }
@@ -186,8 +197,8 @@
         letter-spacing: 0.5px;
       }
 
-      input[type='number'],
-      input[type='text'],
+      input[type="number"],
+      input[type="text"],
       select {
         width: 100%;
         padding: 10px 12px;
@@ -199,8 +210,8 @@
         transition: all 0.2s ease;
       }
 
-      input[type='number']:focus,
-      input[type='text']:focus,
+      input[type="number"]:focus,
+      input[type="text"]:focus,
       select:focus {
         outline: none;
         border-color: #3b82f6;
@@ -275,7 +286,12 @@
       /* Divider */
       .divider {
         height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.2), transparent);
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(148, 163, 184, 0.2),
+          transparent
+        );
         margin: 20px 0;
       }
 
@@ -386,9 +402,16 @@
         align-items: center;
         justify-content: center;
       }
-      .time-compact { line-height: 1.2; }
-      .time-compact div:first-child { font-weight: 600; }
-      .time-compact div:last-child { color: #94a3b8; font-size: 12px; }
+      .time-compact {
+        line-height: 1.2;
+      }
+      .time-compact div:first-child {
+        font-weight: 600;
+      }
+      .time-compact div:last-child {
+        color: #94a3b8;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -417,7 +440,13 @@
           <div class="control-group">
             <label>Auto Refresh Interval (seconds)</label>
             <div class="flex">
-              <input type="number" id="pollSec" value="2" min="1" style="flex: 1;" />
+              <input
+                type="number"
+                id="pollSec"
+                value="2"
+                min="1"
+                style="flex: 1"
+              />
             </div>
           </div>
 
@@ -425,14 +454,28 @@
             <button class="primary" id="btnRefresh">Refresh Now</button>
             <button class="secondary" id="btnToggleAuto">Start Auto</button>
           </div>
-          <p style="font-size: 12px; color: #94a3b8; margin-bottom: 16px; margin-top: 24px;">Angle vs. Sensor State visualization</p>
-          <canvas id="radar" width="400" height="450" style="margin-bottom: 0;"></canvas>
+          <p
+            style="
+              font-size: 12px;
+              color: #94a3b8;
+              margin-bottom: 16px;
+              margin-top: 24px;
+            "
+          >
+            Angle vs. Sensor State visualization
+          </p>
+          <canvas
+            id="radar"
+            width="400"
+            height="450"
+            style="margin-bottom: 0"
+          ></canvas>
         </div>
 
         <!-- Servo Control Card -->
         <div class="card">
           <h2>⚙️ Servo Control</h2>
-          
+
           <div class="control-group">
             <label>Mode</label>
             <select id="servoMode">
@@ -443,10 +486,22 @@
 
           <div class="control-group">
             <label>Target Angle (0-180°)</label>
-            <input type="number" id="servoTarget" min="0" max="180" value="90" />
+            <input
+              type="number"
+              id="servoTarget"
+              min="0"
+              max="180"
+              value="90"
+            />
           </div>
 
-          <button class="primary" style="width: 100%; margin-bottom: 20px;" id="btnSaveServo">Save Servo</button>
+          <button
+            class="primary"
+            style="width: 100%; margin-bottom: 20px"
+            id="btnSaveServo"
+          >
+            Save Servo
+          </button>
 
           <div class="divider"></div>
 
@@ -462,30 +517,47 @@
 
           <div class="control-group">
             <label>Red Hold (ms)</label>
-            <input type="number" id="redHoldMs" min="100" step="100" value="1500" />
+            <input
+              type="number"
+              id="redHoldMs"
+              min="100"
+              step="100"
+              value="1500"
+            />
           </div>
 
-          <button class="secondary" style="width: 100%;" id="btnSaveSettings">Save Settings</button>
+          <button class="secondary" style="width: 100%" id="btnSaveSettings">
+            Save Settings
+          </button>
         </div>
 
         <!-- Data Table Card -->
         <div class="card">
           <h2>📊 Latest Data</h2>
 
-          <div style="margin-bottom: 16px;">
-            <a href="/api/ldr/export.csv" target="_blank" style="color: #3b82f6; text-decoration: none; font-size: 13px; font-weight: 600;">
+          <div style="margin-bottom: 16px">
+            <a
+              href="/api/ldr/export.csv"
+              target="_blank"
+              style="
+                color: #3b82f6;
+                text-decoration: none;
+                font-size: 13px;
+                font-weight: 600;
+              "
+            >
               ↓ Download CSV Report
             </a>
           </div>
 
-          <div class="table-wrapper" style="overflow-y: scroll;">
+          <div class="table-wrapper" style="overflow-y: scroll">
             <table id="tbl">
               <thead>
                 <tr>
-                  <th style="width: 35%;">Time</th>
-                  <th style="width: 20%;">Angle</th>
-                  <th style="width: 25%;">State</th>
-                  <th style="width: 20%;">Raw</th>
+                  <th style="width: 35%">Time</th>
+                  <th style="width: 20%">Angle</th>
+                  <th style="width: 25%">State</th>
+                  <th style="width: 20%">Raw</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -498,9 +570,11 @@
     <script>
       function fmtTime(ts) {
         // Return {date: 'dd/mm/yyyy', time: 'hh:mm:ss'}
-        if (!ts || typeof ts !== 'string') return { date: '-', time: '-' };
+        if (!ts || typeof ts !== "string") return { date: "-", time: "-" };
         // Expecting formats like 'YYYY-MM-DD HH:MM:SS' or ISO
-        const m = ts.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+        const m = ts.match(
+          /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/
+        );
         if (m) {
           const [, y, mo, d, h, mi, s] = m;
           return { date: `${d}/${mo}/${y}`, time: `${h}:${mi}:${s}` };
@@ -508,15 +582,20 @@
         // Fallback: try Date() for ISO or other parseable strings
         const dt = new Date(ts);
         if (!isNaN(dt)) {
-          const pad = (n) => String(n).padStart(2, '0');
+          const pad = (n) => String(n).padStart(2, "0");
           return {
-            date: `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`,
-            time: `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`,
+            date: `${pad(dt.getDate())}/${pad(
+              dt.getMonth() + 1
+            )}/${dt.getFullYear()}`,
+            time: `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(
+              dt.getSeconds()
+            )}`,
           };
         }
-        return { date: '-', time: '-' };
+        return { date: "-", time: "-" };
       }
 
+      const API_BASE = ""; // e.g. "https://iot.mahardika.ac.id" when deployed to cloud
       const elStatus = document.getElementById("apiStatus");
       const elTblBody = document.querySelector("#tbl tbody");
       const elRadar = document.getElementById("radar");
@@ -536,7 +615,7 @@
 
       async function ping() {
         try {
-          const r = await fetch("/api/settings");
+          const r = await fetch(`${API_BASE}/api/settings`);
           if (!r.ok) throw new Error(r.status);
           const s = await r.json();
           elMode.value = s.servo_mode;
@@ -547,12 +626,14 @@
           elStatus.textContent = "online";
           elStatus.classList.remove("warn");
           elStatus.classList.add("ok");
-          elStatus.innerHTML = '<span class="status-dot"></span><span>online</span>';
+          elStatus.innerHTML =
+            '<span class="status-dot"></span><span>online</span>';
         } catch (e) {
           elStatus.textContent = "offline";
           elStatus.classList.remove("ok");
           elStatus.classList.add("warn");
-          elStatus.innerHTML = '<span class="status-dot"></span><span>offline</span>';
+          elStatus.innerHTML =
+            '<span class="status-dot"></span><span>offline</span>';
         }
       }
 
@@ -615,8 +696,15 @@
 
       async function loadLatest() {
         try {
-          const r = await fetch("/api/ldr/latest?n=180");
+          const r = await fetch(`${API_BASE}/api/ldr/latest?n=180`);
           const rows = await r.json();
+
+          if (!rows || rows.length === 0) {
+            elTblBody.innerHTML =
+              '<tr><td colspan="4" style="text-align:center;color:#64748b;font-size:12px;">No data yet</td></tr>';
+            drawRadar([]);
+            return;
+          }
 
           elTblBody.innerHTML = rows
             .slice(0, 15)
@@ -624,8 +712,14 @@
               const isDark = r.ldr_state == 1;
               const st = isDark ? "Gelap" : "Terang";
               const stateClass = isDark ? "state-dark" : "state-light";
+              const t = fmtTime(r.created_at);
               return `<tr>
-                <td><div class="time-compact"><div>${fmtTime(r.created_at).date}</div><div>${fmtTime(r.created_at).time}</div></div></td>
+                <td>
+                  <div class="time-compact">
+                    <div>${t.date}</div>
+                    <div>${t.time}</div>
+                  </div>
+                </td>
                 <td style="text-align: right;">${r.angle_deg}°</td>
                 <td class="${stateClass}">${st}</td>
                 <td>${r.raw_value ?? "-"}</td>
@@ -644,7 +738,7 @@
           servo_mode: elMode.value,
           servo_target: Number(elTarget.value || 0),
         };
-        const r = await fetch("/api/settings", {
+        const r = await fetch(`${API_BASE}/api/settings`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -658,7 +752,7 @@
           yellow_logic: elYLogic.value,
           red_hold_ms: Number(elRedHold.value || 1500),
         };
-        const r = await fetch("/api/settings", {
+        const r = await fetch(`${API_BASE}/api/settings`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -682,6 +776,10 @@
       document.addEventListener("DOMContentLoaded", async () => {
         await ping();
         await loadLatest();
+        const csvLink = document.querySelector('a[href="/api/ldr/export.csv"]');
+        if (csvLink && API_BASE) {
+          csvLink.href = `${API_BASE}/api/ldr/export.csv`;
+        }
         elBtnRefresh.onclick = loadLatest;
         elBtnSaveServo.onclick = saveServo;
         elBtnSaveSettings.onclick = saveSettings;

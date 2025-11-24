@@ -12,6 +12,7 @@ def init_mysql(app):
         "user": app.config["DB_USER"],
         "password": app.config["DB_PASS"],
         "database": app.config["DB_NAME"],
+        "charset": app.config.get("DB_CHARSET", "utf8mb4"),
     }
     _pool = pooling.MySQLConnectionPool(
         pool_name="iot_pool",
