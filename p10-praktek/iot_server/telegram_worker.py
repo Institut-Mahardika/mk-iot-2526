@@ -4,8 +4,8 @@ import time
 import io
 import requests
 
-# TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_BOT_TOKEN = "8306549722:AAFZCTYXPOskgAposVcL78fTr12cT-Etxuw"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# TELEGRAM_BOT_TOKEN = "8306549722:AAFZCTYXPOskgAposVcL78fTr12cT-Etxuw"
 API_BASE = os.getenv("IOT_API_BASE", "http://127.0.0.1:5100")  # alamat Flask
 
 if not TELEGRAM_BOT_TOKEN:
@@ -37,9 +37,7 @@ def tg_send_photo(chat_id, image_bytes, caption=None, filename="radar.png"):
     Kirim gambar ke Telegram menggunakan sendPhoto.
     image_bytes: bytes PNG yang diterima dari API Flask.
     """
-    files = {
-        "photo": (filename, image_bytes, "image/png")
-    }
+    files = {"photo": (filename, image_bytes, "image/png")}
     data = {
         "chat_id": chat_id,
     }
@@ -106,14 +104,14 @@ def handle_command(chat_id, text):
             # Ambil gambar radar dari API Flask (pastikan endpoint ini sudah ada di app.py)
             r = requests.get(f"{API_BASE}/api/ldr/radar-image?n=180", timeout=30)
             if r.status_code != 200:
-                tg_send_message(chat_id, f"Gagal ambil gambar radar: HTTP {r.status_code}")
+                tg_send_message(
+                    chat_id, f"Gagal ambil gambar radar: HTTP {r.status_code}"
+                )
                 return
 
             img_bytes = r.content
             tg_send_photo(
-                chat_id,
-                img_bytes,
-                caption="Radar LDR terbaru (data terakhir)."
+                chat_id, img_bytes, caption="Radar LDR terbaru (data terakhir)."
             )
         except Exception as e:
             tg_send_message(chat_id, f"Gagal ambil radar: `{e}`")
