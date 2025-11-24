@@ -9,8 +9,12 @@ import math
 import io
 from typing import List, Dict, Any
 
+# from telegram_utils import send_telegram
+import base64
+
 import matplotlib
-matplotlib.use("Agg")        # backend non-GUI untuk generate PNG
+
+matplotlib.use("Agg")  # backend non-GUI untuk generate PNG
 import matplotlib.pyplot as plt
 
 import json
@@ -20,10 +24,21 @@ load_dotenv()
 
 app = Flask(__name__, static_folder="static", static_url_path="/")
 
+_last_alert = {}
+
+
+def should_send_alert(device_id: str, angle: int, cooldown_sec: int = 60) -> bool:
+    key = f"{device_id}:{angle}"
+    now = time.time()
+    last = _last_alert.get(key, 0)
+    if now - last >= cooldown_sec:
+        _last_alert[key] = now
+        return True
+    return False
+
+
 def fetch_ldr_data_for_ai(
-    device_id: str | None = None,
-    minutes: int = 10,
-    limit: int = 360
+    device_id: str | None = None, minutes: int = 10, limit: int = 360
 ):
     """
     Ambil data ldr_readings untuk analisis AI.
@@ -54,6 +69,7 @@ def fetch_ldr_data_for_ai(
         cur.close()
 
     return rows
+
 
 def build_ai_prompt_from_rows(rows: list[dict]) -> str:
     """
@@ -120,6 +136,7 @@ Jawab singkat padat dalam bahasa Indonesia, maksimal 3 paragraf.
 
     return prompt.strip()
 
+
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
@@ -185,6 +202,7 @@ def call_ai_model(prompt: str) -> str:
 
     return "Model tidak mengembalikan teks analisis."
 
+
 @app.post("/api/ldr/analytics/ai")
 def ldr_analytics_ai():
     """
@@ -205,15 +223,21 @@ def ldr_analytics_ai():
         prompt = build_ai_prompt_from_rows(rows)
         result_text = call_ai_model(prompt)
 
-        return jsonify({
-            "ok": True,
-            "rows_count": len(rows),
-            "provider": AI_PROVIDER,
-            "analysis": result_text,
-        }), 200
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "rows_count": len(rows),
+                    "provider": AI_PROVIDER,
+                    "analysis": result_text,
+                }
+            ),
+            200,
+        )
     except Exception as e:
         print("AI analytics error:", e)
         return jsonify({"ok": False, "message": str(e)}), 500
+
 
 # --- Load configuration from environment ---
 def load_config(app: Flask) -> None:
@@ -227,6 +251,7 @@ def load_config(app: Flask) -> None:
         DB_POOL_SIZE=int(os.getenv("DB_POOL_SIZE", "5")),
     )
 
+
 load_config(app)
 
 # --- Telegram config ---
@@ -235,7 +260,8 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Cooldown supaya bot tidak spam
 ALERT_COOLDOWN_SEC = int(os.getenv("ALERT_COOLDOWN_SEC", "30"))
-LAST_ALERT_TS = 0.0   # di-update saat kirim alert merah
+LAST_ALERT_TS = 0.0  # di-update saat kirim alert merah
+
 
 def send_telegram(text: str) -> None:
     """Kirim pesan sederhana ke Telegram. Silent kalau belum di-set."""
@@ -259,12 +285,30 @@ def send_telegram(text: str) -> None:
     except Exception as e:
         print("[telegram] error:", e)
 
-def send_radar_snapshot() -> None:
-    """Ambil data terakhir, render radar sederhana, kirim ke Telegram."""
+
+def send_telegram_photo(image_bytes: bytes, caption: str = ""):
+    """Kirim foto (PNG/JPG) ke Telegram."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[telegram] not configured, skip radar snapshot")
+        print("Telegram not configured, skip photo")
         return
 
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    files = {
+        "photo": ("radar.png", io.BytesIO(image_bytes), "image/png"),
+    }
+    data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
+    try:
+        r = requests.post(url, data=data, files=files, timeout=10)
+        if not r.ok:
+            print("Failed send photo:", r.status_code, r.text)
+    except Exception as e:
+        print("Error send photo:", e)
+
+
+def build_radar_image_bytes() -> bytes:
+    """Ambil data terakhir dan render gambar radar sebagai PNG bytes.
+    Return b"" jika belum ada data.
+    """
     with get_conn() as conn:
         cur = conn.cursor(dictionary=True)
         try:
@@ -277,8 +321,7 @@ def send_radar_snapshot() -> None:
             cur.close()
 
     if not rows:
-        send_telegram("Radar snapshot gagal: belum ada data.")
-        return
+        return b""
 
     # urutkan berdasarkan sudut
     rows = sorted(rows, key=lambda r: r["angle_deg"])
@@ -300,16 +343,41 @@ def send_radar_snapshot() -> None:
     fig.savefig(buf, format="png", dpi=130, bbox_inches="tight")
     plt.close(fig)
     buf.seek(0)
+    return buf.getvalue()
+
+
+def send_radar_snapshot() -> tuple[bool, str]:
+    """Ambil snapshot radar dan kirim ke Telegram.
+    Return (ok: bool, message: str) supaya bisa dilaporkan ke front-end.
+    """
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        msg = "[telegram] not configured, skip radar snapshot"
+        print(msg)
+        return False, "Telegram belum dikonfigurasi di server (.env)."
+
+    img_bytes = build_radar_image_bytes()
+    if not img_bytes:
+        warn = "Radar snapshot gagal: belum ada data LDR."
+        print("[telegram]", warn)
+        # kirim pesan teks agar tetap ada feedback di Telegram
+        send_telegram(warn)
+        return False, warn
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    files = {"photo": ("radar.png", buf, "image/png")}
+    files = {"photo": ("radar.png", io.BytesIO(img_bytes), "image/png")}
     data = {"chat_id": TELEGRAM_CHAT_ID, "caption": "📡 Radar snapshot terbaru"}
+
     try:
         r = requests.post(url, data=data, files=files, timeout=10)
         if not r.ok:
-            print("[telegram] send_radar_snapshot failed:", r.status_code, r.text)
+            error_msg = f"HTTP {r.status_code}: {r.text}"
+            print("[telegram] send_radar_snapshot failed:", error_msg)
+            return False, f"Gagal kirim ke Telegram: {error_msg}"
+        return True, "Radar berhasil dikirim ke Telegram."
     except Exception as e:
         print("[telegram] send_radar_snapshot error:", e)
+        return False, f"Exception saat kirim ke Telegram: {e}"
+
 
 def send_daily_summary() -> None:
     """Buat grafik ringkasan harian dan kirim ke Telegram."""
@@ -368,12 +436,15 @@ def send_daily_summary() -> None:
     except Exception as e:
         print("[telegram] send_daily_summary error:", e)
 
+
 # init pool
 init_mysql(app)
+
 
 @app.get("/")
 def home():
     return send_from_directory("static", "index.html")
+
 
 # ---------------- API INSERT ----------------
 @app.post("/api/ldr/insert")
@@ -442,6 +513,7 @@ def insert_ldr():
         print("insert_ldr error:", e)
         return jsonify({"ok": False, "message": str(e)}), 400
 
+
 # --------------- API QUERY DATA -------------
 @app.get("/api/ldr/latest")
 def latest():
@@ -451,12 +523,14 @@ def latest():
         try:
             cur.execute(
                 "SELECT angle_deg, ldr_state, raw_value, created_at "
-                "FROM ldr_readings ORDER BY id DESC LIMIT %s", (n,)
+                "FROM ldr_readings ORDER BY id DESC LIMIT %s",
+                (n,),
             )
             rows: List[Dict[str, Any]] = cur.fetchall()
         finally:
             cur.close()
     return jsonify(rows), 200
+
 
 # --------------- AI / ANALYTICS SUMMARY ---------------
 @app.get("/api/ldr/ai-summary")
@@ -489,12 +563,10 @@ def ai_summary():
         cur.close()
 
     if not rows:
-        return jsonify({
-            "ok": False,
-            "reason": "no_data",
-            "summary": "",
-            "stats": {}
-        }), 200
+        return (
+            jsonify({"ok": False, "reason": "no_data", "summary": "", "stats": {}}),
+            200,
+        )
 
     total = len(rows)
     dark = sum(1 for r in rows if r["ldr_state"] == 1)
@@ -506,6 +578,7 @@ def ai_summary():
 
     # Sudut dominan untuk gelap & terang (mode sederhana)
     from collections import Counter
+
     dark_mode = None
     light_mode = None
     if dark > 0:
@@ -548,19 +621,49 @@ def ai_summary():
 
     summary = "\n".join(summary_lines)
 
-    return jsonify({
-        "ok": True,
-        "summary": summary,
-        "stats": {
-            "total": total,
-            "dark": dark,
-            "light": light,
-            "dark_angles": dark_angles,
-            "light_angles": light_angles,
-            "dark_mode": dark_mode,
-            "light_mode": light_mode,
-        },
-    }), 200
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "summary": summary,
+                "stats": {
+                    "total": total,
+                    "dark": dark,
+                    "light": light,
+                    "dark_angles": dark_angles,
+                    "light_angles": light_angles,
+                    "dark_mode": dark_mode,
+                    "light_mode": light_mode,
+                },
+            }
+        ),
+        200,
+    )
+
+
+@app.post("/api/ldr/send-ai-telegram")
+def send_ai_telegram():
+    """
+    Generate AI summary + kirim ke Telegram.
+    """
+    try:
+        # 1. Ambil ringkasan AI dari endpoint internal
+        base = request.url_root.rstrip("/")
+        r = requests.get(f"{base}/api/ldr/ai-summary?n=200")
+        data = r.json()
+
+        if not data.get("ok"):
+            return jsonify({"ok": False, "message": "Summary kosong"}), 200
+
+        summary = data["summary"]
+
+        # 2. Kirim Telegram
+        send_telegram(f"*AI Summary Report:*\n\n{summary}")
+
+        return jsonify({"ok": True, "message": "Terkirim ke Telegram"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
 
 # --------------- API SETTINGS ---------------
 @app.get("/api/settings")
@@ -573,6 +676,7 @@ def get_settings():
         finally:
             cur.close()
     return jsonify(row), 200
+
 
 @app.post("/api/settings")
 def update_settings():
@@ -595,6 +699,7 @@ def update_settings():
             cur.close()
     return jsonify({"ok": True}), 200
 
+
 # -------------- API COMMAND DEVICE ----------
 @app.get("/api/servo/target")
 def servo_target():
@@ -607,6 +712,7 @@ def servo_target():
             cur.close()
     target = -1 if s["servo_mode"] == "auto" else int(s["servo_target"])
     return jsonify({"target": target}), 200
+
 
 # ------------- API EXPORT CSV -------------
 @app.get("/api/ldr/export.csv")
@@ -629,14 +735,16 @@ def export_csv():
     w = csv.writer(si)
     w.writerow(["id", "device_id", "angle_deg", "ldr_state", "raw_value", "created_at"])
     for r in rows:
-        w.writerow([
-            r["id"],
-            r["device_id"],
-            r["angle_deg"],
-            r["ldr_state"],
-            r["raw_value"] or "",
-            r["created_at"],
-        ])
+        w.writerow(
+            [
+                r["id"],
+                r["device_id"],
+                r["angle_deg"],
+                r["ldr_state"],
+                r["raw_value"] or "",
+                r["created_at"],
+            ]
+        )
 
     return (
         si.getvalue(),
@@ -647,12 +755,24 @@ def export_csv():
         },
     )
 
+
+@app.post("/api/ldr/radar-image")
+def radar_image_api():
+    """Generate radar image dan kembalikan sebagai base64 PNG untuk front-end."""
+    img_bytes = build_radar_image_bytes()
+    if not img_bytes:
+        return jsonify({"ok": False, "message": "Data masih kosong"}), 200
+
+    b64 = base64.b64encode(img_bytes).decode("ascii")
+    return jsonify({"ok": True, "image_base64": b64}), 200
+
 # ------------- API NOTIFY TELEGRAM -------------
-@app.get("/api/notify/radar")
+@app.route("/api/notify/radar", methods=["GET", "POST"])
 def notify_radar():
     """Trigger manual kirim radar snapshot ke Telegram."""
-    send_radar_snapshot()
-    return jsonify({"ok": True}), 200
+    ok, msg = send_radar_snapshot()
+    return jsonify({"ok": ok, "message": msg}), 200
+
 
 @app.get("/api/notify/daily")
 def notify_daily():

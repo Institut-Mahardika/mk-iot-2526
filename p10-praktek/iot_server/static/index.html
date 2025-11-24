@@ -470,6 +470,13 @@
             height="450"
             style="margin-bottom: 0"
           ></canvas>
+          <button
+            class="tertiary"
+            style="width: 100%; margin-top: 10px"
+            id="btnSendRadar"
+          >
+            SEND RADAR TO TELEGRAM
+          </button>
         </div>
 
         <!-- Servo Control Card -->
@@ -532,11 +539,7 @@
 
           <div class="divider"></div>
 
-          <button
-            class="primary"
-            style="width: 100%;"
-            id="btnAiSummary"
-          >
+          <button class="primary" style="width: 100%" id="btnAiSummary">
             GENERATE AI SUMMARY
           </button>
 
@@ -547,6 +550,13 @@
           >
             Data kosong.
           </pre>
+          <button
+            class="tertiary"
+            style="width: 100%; margin-top: 10px"
+            id="btnSendTelegram"
+          >
+            SEND TO TELEGRAM
+          </button>
         </div>
 
         <!-- Data Table Card -->
@@ -589,6 +599,14 @@
       const elBtnAi = document.getElementById("btnAiSummary");
       const elAiBox = document.getElementById("aiSummaryBox");
 
+      function setAiStatus(message) {
+        if (elAiBox) {
+          elAiBox.textContent = message;
+        } else {
+          console.log(message);
+        }
+      }
+
       async function generateAiSummary() {
         elAiBox.textContent = "Mengambil ringkasan data...";
         try {
@@ -605,6 +623,54 @@
         } catch (e) {
           console.error("AI summary error:", e);
           elAiBox.textContent = "Gagal mengambil ringkasan AI dari server.";
+        }
+      }
+
+      const elBtnSendTelegram = document.getElementById("btnSendTelegram");
+
+      async function sendSummaryToTelegram() {
+        elAiBox.textContent = "Mengirim ringkasan ke Telegram...";
+        try {
+          const r = await fetch(`${API_BASE}/api/ldr/send-ai-telegram`, {
+            method: "POST",
+          });
+          const data = await r.json();
+
+          if (data.ok) {
+            elAiBox.textContent =
+              "✓ Ringkasan AI berhasil dikirim ke Telegram!";
+          } else {
+            elAiBox.textContent = "✗ Gagal mengirim Telegram: " + data.message;
+          }
+        } catch (err) {
+          elAiBox.textContent = "✗ Error saat kirim Telegram.";
+        }
+      }
+
+      const elBtnSendRadar = document.getElementById("btnSendRadar");
+
+      async function sendRadarToTelegram() {
+        setAiStatus("Mengirim radar ke Telegram...");
+
+        try {
+          const res = await fetch(`${API_BASE}/api/notify/radar`, {
+            method: "POST", // atau "GET", dua-duanya sekarang didukung
+            headers: { "Content-Type": "application/json" },
+          });
+
+          const data = await res.json();
+          if (data.ok) {
+            setAiStatus(
+              "✓ " + (data.message || "Radar berhasil dikirim ke Telegram.")
+            );
+          } else {
+            setAiStatus(
+              "✗ Gagal kirim radar: " + (data.message || "Unknown error")
+            );
+          }
+        } catch (err) {
+          console.error("sendRadarToTelegram error:", err);
+          setAiStatus("✗ Gagal kirim radar: " + err);
         }
       }
 
@@ -828,6 +894,11 @@
         if (elBtnAi) {
           elBtnAi.onclick = generateAiSummary;
         }
+
+        if (elBtnSendTelegram) {
+          elBtnSendTelegram.onclick = sendSummaryToTelegram;
+        }
+        if (elBtnSendRadar) elBtnSendRadar.onclick = sendRadarToTelegram;
       });
     </script>
   </body>
