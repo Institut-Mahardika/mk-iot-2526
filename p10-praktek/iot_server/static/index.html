@@ -526,9 +526,27 @@
             />
           </div>
 
-          <button class="secondary" style="width: 100%" id="btnSaveSettings">
+          <button class="primary" style="width: 100%" id="btnSaveSettings">
             Save Settings
           </button>
+
+          <div class="divider"></div>
+
+          <button
+            class="primary"
+            style="width: 100%;"
+            id="btnAiSummary"
+          >
+            GENERATE AI SUMMARY
+          </button>
+
+          <pre
+            id="aiSummaryBox"
+            class="info-box"
+            style="margin-top: 12px; white-space: pre-line"
+          >
+            Data kosong.
+          </pre>
         </div>
 
         <!-- Data Table Card -->
@@ -568,6 +586,28 @@
     </div>
 
     <script>
+      const elBtnAi = document.getElementById("btnAiSummary");
+      const elAiBox = document.getElementById("aiSummaryBox");
+
+      async function generateAiSummary() {
+        elAiBox.textContent = "Mengambil ringkasan data...";
+        try {
+          const r = await fetch(`${API_BASE}/api/ldr/ai-summary?n=200`);
+          const data = await r.json();
+
+          if (!data.ok || !data.summary) {
+            elAiBox.textContent =
+              "Data kosong atau belum cukup untuk dianalisis.";
+            return;
+          }
+
+          elAiBox.textContent = data.summary;
+        } catch (e) {
+          console.error("AI summary error:", e);
+          elAiBox.textContent = "Gagal mengambil ringkasan AI dari server.";
+        }
+      }
+
       function fmtTime(ts) {
         // Return {date: 'dd/mm/yyyy', time: 'hh:mm:ss'}
         if (!ts || typeof ts !== "string") return { date: "-", time: "-" };
@@ -784,6 +824,10 @@
         elBtnSaveServo.onclick = saveServo;
         elBtnSaveSettings.onclick = saveSettings;
         elToggleAuto.onclick = toggleAuto;
+
+        if (elBtnAi) {
+          elBtnAi.onclick = generateAiSummary;
+        }
       });
     </script>
   </body>

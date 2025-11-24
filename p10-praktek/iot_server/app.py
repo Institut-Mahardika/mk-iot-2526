@@ -13,9 +13,207 @@ import matplotlib
 matplotlib.use("Agg")        # backend non-GUI untuk generate PNG
 import matplotlib.pyplot as plt
 
+import json
+from datetime import datetime, timedelta
+
 load_dotenv()
 
 app = Flask(__name__, static_folder="static", static_url_path="/")
+
+def fetch_ldr_data_for_ai(
+    device_id: str | None = None,
+    minutes: int = 10,
+    limit: int = 360
+):
+    """
+    Ambil data ldr_readings untuk analisis AI.
+    Default: 10 menit terakhir, max 360 baris.
+    """
+    since = datetime.utcnow() - timedelta(minutes=minutes)
+    rows = []
+
+    with get_conn() as conn:
+        cur = conn.cursor(dictionary=True)
+
+        sql = """
+            SELECT device_id, angle_deg, ldr_state, raw_value, created_at
+            FROM ldr_readings
+            WHERE created_at >= %s
+        """
+        params = [since]
+
+        if device_id:
+            sql += " AND device_id = %s"
+            params.append(device_id)
+
+        sql += " ORDER BY created_at DESC LIMIT %s"
+        params.append(limit)
+
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        cur.close()
+
+    return rows
+
+def build_ai_prompt_from_rows(rows: list[dict]) -> str:
+    """
+    Bentuk prompt bahasa Indonesia untuk menganalisis pola cahaya (LDR) per sudut.
+    """
+    if not rows:
+        return (
+            "Tidak ada data LDR yang tersedia. "
+            "Jangan berikan analisis, cukup katakan bahwa data kosong."
+        )
+
+    # Bangun ringkasan numerik sederhana: hitung gelap/terang per sudut
+    stats = {}
+    for r in rows:
+        angle = int(r["angle_deg"])
+        state = int(r["ldr_state"])
+        if angle not in stats:
+            stats[angle] = {"dark": 0, "light": 0}
+        if state == 1:
+            stats[angle]["dark"] += 1
+        else:
+            stats[angle]["light"] += 1
+
+    # bentuk tabel mini di teks
+    lines = []
+    for angle in sorted(stats.keys()):
+        dark = stats[angle]["dark"]
+        light = stats[angle]["light"]
+        total = dark + light
+        if total == 0:
+            continue
+        p_dark = (dark / total) * 100
+        p_light = (light / total) * 100
+        lines.append(
+            f"Sudut {angle:3d}° → gelap={dark} ({p_dark:.1f}%), "
+            f"terang={light} ({p_light:.1f}%)"
+        )
+
+    summary_block = "\n".join(lines[:72])  # batasi panjang
+
+    prompt = f"""
+Kamu adalah analis data IoT.
+
+Konteks:
+- Sensor LDR dipasang pada servo yang berputar 0–180 derajat.
+- ldr_state=1 artinya GELAP, ldr_state=0 artinya TERANG.
+- Data diambil dari percobaan satu sesi (beberapa putaran servo).
+
+Berikut ringkasan statistik per sudut:
+{summary_block}
+
+Tugasmu:
+1. Jelaskan pola cahaya secara singkat:
+   - Sudut mana yang paling sering gelap?
+   - Sudut mana yang paling sering terang?
+2. Berikan interpretasi praktis:
+   - Kemungkinan posisi sumber cahaya atau objek penghalang.
+3. Berikan saran singkat:
+   - Apakah posisi sensor/servo sudah ideal?
+   - Apa eksperimen lanjutan yang bisa dilakukan mahasiswa?
+
+Jawab singkat padat dalam bahasa Indonesia, maksimal 3 paragraf.
+"""
+
+    return prompt.strip()
+
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+PPLX_API_KEY = os.getenv("PPLX_API_KEY")
+PPLX_MODEL = os.getenv("PPLX_MODEL", "llama-3.1-sonar-small-128k-online")
+
+
+def call_ai_model(prompt: str) -> str:
+    """
+    Panggil model AI eksternal dan kembalikan teks hasil analisis.
+    Kalau konfigurasi belum ada, kembalikan pesan default.
+    """
+    if AI_PROVIDER == "perplexity":
+        if not PPLX_API_KEY:
+            return "Konfigurasi Perplexity belum di-set (PPLX_API_KEY kosong)."
+
+        url = "https://api.perplexity.ai/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {PPLX_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        body = {
+            "model": PPLX_MODEL,
+            "messages": [
+                {"role": "system", "content": "Kamu adalah asisten data IoT."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.3,
+        }
+        r = requests.post(url, headers=headers, json=body, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        return data["choices"][0]["message"]["content"]
+
+    # default: Gemini via REST
+    if not GEMINI_API_KEY:
+        return "Konfigurasi Gemini belum di-set (GEMINI_API_KEY kosong)."
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    )
+    body = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.3,
+        },
+    }
+    r = requests.post(url, json=body, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    # ambil teks pertama
+    if "candidates" in data and data["candidates"]:
+        parts = data["candidates"][0]["content"]["parts"]
+        texts = [p.get("text", "") for p in parts]
+        return "\n".join(texts).strip()
+
+    return "Model tidak mengembalikan teks analisis."
+
+@app.post("/api/ldr/analytics/ai")
+def ldr_analytics_ai():
+    """
+    Body JSON (opsional):
+    {
+      "device_id": "esp32-111",
+      "minutes": 10,
+      "limit": 360
+    }
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        device_id = body.get("device_id") or None
+        minutes = int(body.get("minutes", 10))
+        limit = int(body.get("limit", 360))
+
+        rows = fetch_ldr_data_for_ai(device_id=device_id, minutes=minutes, limit=limit)
+        prompt = build_ai_prompt_from_rows(rows)
+        result_text = call_ai_model(prompt)
+
+        return jsonify({
+            "ok": True,
+            "rows_count": len(rows),
+            "provider": AI_PROVIDER,
+            "analysis": result_text,
+        }), 200
+    except Exception as e:
+        print("AI analytics error:", e)
+        return jsonify({"ok": False, "message": str(e)}), 500
 
 # --- Load configuration from environment ---
 def load_config(app: Flask) -> None:
@@ -259,6 +457,110 @@ def latest():
         finally:
             cur.close()
     return jsonify(rows), 200
+
+# --------------- AI / ANALYTICS SUMMARY ---------------
+@app.get("/api/ldr/ai-summary")
+def ai_summary():
+    """
+    Ringkasan analitik sederhana (bisa jadi input ke Gemini/Perplexity).
+    Return JSON:
+    {
+      "ok": true/false,
+      "reason": "...",
+      "summary": "teks ringkasan",
+      "stats": {...}
+    }
+    """
+    n = int(request.args.get("n", 200))
+
+    # Ambil data terbaru
+    with get_conn() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT angle_deg, ldr_state, created_at
+            FROM ldr_readings
+            ORDER BY id DESC
+            LIMIT %s
+            """,
+            (n,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+
+    if not rows:
+        return jsonify({
+            "ok": False,
+            "reason": "no_data",
+            "summary": "",
+            "stats": {}
+        }), 200
+
+    total = len(rows)
+    dark = sum(1 for r in rows if r["ldr_state"] == 1)
+    light = total - dark
+
+    # Sebaran sudut
+    dark_angles = sorted({int(r["angle_deg"]) for r in rows if r["ldr_state"] == 1})
+    light_angles = sorted({int(r["angle_deg"]) for r in rows if r["ldr_state"] == 0})
+
+    # Sudut dominan untuk gelap & terang (mode sederhana)
+    from collections import Counter
+    dark_mode = None
+    light_mode = None
+    if dark > 0:
+        dark_mode = Counter(
+            int(r["angle_deg"]) for r in rows if r["ldr_state"] == 1
+        ).most_common(1)[0][0]
+    if light > 0:
+        light_mode = Counter(
+            int(r["angle_deg"]) for r in rows if r["ldr_state"] == 0
+        ).most_common(1)[0][0]
+
+    # Buat ringkasan teks (bisa nanti diganti ke AI)
+    pers_dark = dark * 100.0 / total
+    pers_light = light * 100.0 / total
+
+    summary_lines = []
+    summary_lines.append(
+        f"Analisis {total} pembacaan terakhir dari perangkat servo–LDR."
+    )
+    summary_lines.append(
+        f"• Kondisi gelap tercatat sekitar {pers_dark:.1f}% sampel "
+        f"({dark} data), sedangkan terang {pers_light:.1f}% ({light} data)."
+    )
+
+    if dark > 0:
+        summary_lines.append(
+            f"• Sudut yang paling sering gelap berada di sekitar {dark_mode}° "
+            f"dengan rentang sudut gelap di {dark_angles[0]}°–{dark_angles[-1]}°."
+        )
+    if light > 0:
+        summary_lines.append(
+            f"• Sudut yang relatif tetap terang berada di sekitar {light_mode}° "
+            f"dengan rentang sudut terang di {light_angles[0]}°–{light_angles[-1]}°."
+        )
+
+    summary_lines.append(
+        "• Data ini dapat digunakan untuk menentukan zona sudut yang perlu "
+        "diberi perhatian lebih (misalnya area tertutup atau sumber cahaya terhalang)."
+    )
+
+    summary = "\n".join(summary_lines)
+
+    return jsonify({
+        "ok": True,
+        "summary": summary,
+        "stats": {
+            "total": total,
+            "dark": dark,
+            "light": light,
+            "dark_angles": dark_angles,
+            "light_angles": light_angles,
+            "dark_mode": dark_mode,
+            "light_mode": light_mode,
+        },
+    }), 200
 
 # --------------- API SETTINGS ---------------
 @app.get("/api/settings")
